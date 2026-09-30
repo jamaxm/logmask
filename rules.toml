@@ -1,0 +1,155 @@
+# Настройки logmask. Правьте этот файл, а не код.
+# Свой файл можно передать через:  logmask --config my_rules.toml ...
+
+[pseudonym]
+# numbered — [EMAIL_1], [EMAIL_2]: одно значение = одна метка в пределах запуска (по умолчанию)
+# plain    — просто [EMAIL]
+# hash     — [EMAIL:3f9a1c02]: стабильно между запусками и файлами, если задана соль
+style = "numbered"
+# Соль для style = "hash". Лучше через переменную окружения LOGMASK_SALT, а не в файле.
+salt = ""
+
+[rules]
+# Включение/выключение правил (true/false)
+private_key     = true
+iso8583         = true   # «Field 35 = …», DE035, F55 — по номеру поля, см. [iso8583]
+track2          = true   # 4111********1234=2712101…  (PAN=YYMM + сервис-код)
+auth_header     = true   # Authorization: Basic/Bearer ...
+cookie          = true
+url_credentials = true   # ://user:pass@host
+keys            = true   # правила по ключам из секции [keys]
+jwt             = true
+api_tokens      = true   # sk-..., ghp_..., AKIA..., xoxb-...
+custom          = true
+email           = true
+iban            = true
+bank_account    = true   # 20 цифр с кодом валюты: 20208000900123456789
+card            = true   # только номера, прошедшие проверку Луна
+snils           = true
+phone           = true   # без ключа — только с «+» или в формате 8 (916) 123-45-67
+ipv6            = true
+uuid            = false  # обычно это request/trace id — нужны для разбора
+
+# none | last4 — оставлять последние 4 цифры карты: [CARD_1 *1111]
+card_keep = "last4"
+geo             = true   # координаты парой: 41.311081, 69.279737
+
+# full — [IP_1] (по умолчанию: подсеть выдаёт регион и провайдера) | subnet — 10.1.x.x | off
+ipv4 = "full"
+# mask — [GEO_1] | round — округлить до geo_decimals знаков (1 знак ≈ 11 км, 2 ≈ 1 км)
+geo_mode = "mask"
+geo_decimals = 1
+
+# Если в имени поля есть такое слово, значение вида 1.2.3.4 — это версия/OID, а не IP
+[ipv4]
+skip_key_words = ["version", "ver", "build", "release", "revision", "rev", "firmware", "fw",
+                  "object", "oid", "sdk", "app"]
+
+# Телефон без «+» и без имени поля маскируется, только если начинается с кода страны
+# и имеет нужную длину национального номера. Остальные «голые» числа — это обычно ID.
+[phone]
+bare = [
+  { code = "998", digits = 9 },     # Узбекистан: 998901234567, 998 90 123 45 67
+  # { code = "7", digits = 10 },    # Россия/Казахстан — осторожно: может задеть числовые ID
+]
+
+# Контроль: числа из 10–20 цифр, которые не распознало ни одно правило.
+# warn — показать в сводке и в --check (по умолчанию) | mask — маскировать как [NUM_1] | off
+[suspects]
+mode = "warn"
+# Поля, в которых длинное число — норма. Сравнивается по СЛОВАМ имени поля:
+# orderId, order_id, ORDER-ID -> order, id. Поэтому "count" не заденет "account".
+ignore_keys = ["id", "ids", "uid", "no", "num", "seq", "count", "cnt", "amount", "sum", "total",
+               "size", "bytes", "len", "length", "offset", "time", "timestamp", "ts", "date",
+               "epoch", "duration", "elapsed", "took", "ms", "ns", "us", "port", "code",
+               "version", "ver", "hash", "crc", "checksum"]
+
+# Маскирование по ключу: key=value, key: value, "key":"value", <key>value</key>.
+# Регистр и разделители не важны: api_key == apiKey == API-KEY.
+# Имя секции = метка в результате.
+[keys]
+SECRET = [
+  "password", "passwd", "pwd", "pass", "passphrase", "secret", "client_secret",
+  "token", "access_token", "refresh_token", "id_token", "auth_token", "session_token",
+  "api_key", "apikey", "x_api_key", "private_key", "signing_key",
+  "session_id", "sessionid", "jsessionid", "otp", "sms_code", "pin",
+]
+CARD_DATA = ["cvv", "cvc", "cvv2", "cvc2", "exp_date", "expiry", "expiration", "card_exp"]
+DOC = ["passport", "passport_number", "inn", "snils", "pinfl", "паспорт", "инн", "снилс", "пинфл"]
+NAME = ["fio", "full_name", "first_name", "last_name", "middle_name", "cardholder",
+        "card_holder", "holder_name", "фио"]
+PHONE = ["phone", "phone_number", "tel", "mobile", "msisdn", "телефон"]
+EMAIL = ["email", "e_mail", "mail"]
+CARD = ["pan", "card_number"]
+LOGIN = ["login", "username", "user_name", "user"]
+ACCOUNT = ["account_number", "account_no", "acc_number", "bank_account", "settlement_account",
+           "mfo", "bik", "счет", "расчетный_счет"]
+IP = ["ip", "ip_address", "ipaddr", "client_ip", "remote_addr", "remote_ip", "x_forwarded_for",
+      "x_real_ip", "source_ip", "src_ip", "user_ip", "geoip", "geo_ip"]
+GEO = ["lat", "lon", "lng", "long", "latitude", "longitude", "coords", "coordinates", "gps",
+       "geo", "geolocation", "geo_location", "geopoint", "geo_point", "location_coords"]
+ADDRESS = ["address", "addr", "home_address", "street", "house", "apartment", "city", "city_name",
+           "district", "postal_code", "postcode", "zip_code", "zipcode", "адрес", "город"]
+
+# Имя поля содержит СЛОВО (OpLogin, customerPhone, clientIp, userLatitude, geoip_city_name).
+# Имя делится на слова по регистру и _/-: OpLogin -> op + login; слово может продолжаться
+# (coord -> coordinates), но не начинаться с середины (count НЕ совпадёт с account).
+# Для таких полей даты, время и короткие числа не маскируются (lastLoginTime, tokenTtl=3600).
+[keys_contains]
+SECRET = ["password", "passwd", "secret", "token", "api_key", "private_key", "credential"]
+PHONE = ["phone", "msisdn"]
+LOGIN = ["login", "username"]
+EMAIL = ["email"]
+IP = ["client_ip", "remote_ip", "remote_addr", "forwarded_for", "real_ip", "source_ip", "user_ip"]
+GEO = ["latitude", "longitude", "geoloc", "geoip", "coord", "gps"]
+DOC = ["passport", "snils", "pinfl"]
+ACCOUNT = ["account_number", "account_no", "bank_account"]
+NAME = ["full_name", "first_name", "last_name", "middle_name", "cardholder", "card_holder"]
+# Если имя поля ЗАКАНЧИВАЕТСЯ этим словом — это свойство, а не сами данные:
+# PhoneModel, TransPhoneTime, LoginResult, EmailVerified. (Точные ключи из [keys] это не отменяет.)
+skip_last_words = ["time", "date", "ts", "timestamp", "model", "type", "status", "result",
+                   "count", "cnt", "len", "length", "format", "mask", "masked", "verified",
+                   "confirmed", "enabled", "flag", "brand", "os", "lang", "attempts", "expires",
+                   "expiry", "ttl", "exists", "required", "policy"]
+
+# Значения, которые НЕ маскировать (служебные адреса, свои серверы и т.п.)
+[allow]
+# Поля, значения которых — служебные числа, а не данные клиента: форматные правила
+# (карта, счёт, телефон) их пропускают и не помечают как «подозрительные».
+# Start/End — границы BIN-диапазонов (8600310000000000…8600319999999999),
+# KSN — серийный номер ключа DUKPT, RRN/STAN — номера транзакции, TVR/TSI/@TAC*/@TTL/@CTL — EMV.
+keys = ["Start", "End", "KSN", "RRN", "STAN", "TVR", "TSI", "ATC", "AID",
+        "@TACDN", "@TACDF", "@TACON", "@TACDenial", "@TACDefault", "@TACOnline",
+        "@TTL", "@CTL", "@ODCVMTL"]
+values = [
+  # "support@company.com",
+  # "10.0.0.1",
+]
+
+# Свои шаблоны (регулярные выражения Python). Порядок = порядок применения.
+# [[custom]]
+# label   = "CONTRACT"
+# pattern = 'DOG-\d{6}'
+
+# ISO 8583 (дампы сообщений процессинга): номер поля -> метка.
+# Остальные поля (4 сумма, 7/12 время, 11 STAN, 37 RRN, 41/42 терминал/мерчант …) не трогаются.
+[iso8583]
+others_not_suspect = true
+
+[iso8583.fields]
+2 = "CARD"          # PAN
+14 = "CARD_DATA"    # срок действия YYMM
+34 = "CARD"         # расширенный PAN
+35 = "CARD_DATA"    # Track 2
+36 = "CARD_DATA"    # Track 3
+45 = "CARD_DATA"    # Track 1
+52 = "SECRET"       # PIN-блок
+53 = "SECRET"       # данные безопасности
+55 = "CARD_DATA"    # EMV (ICC) — может содержать PAN (5A) и Track 2 (57)
+64 = "SECRET"       # MAC
+96 = "SECRET"       # данные безопасности сообщения
+128 = "SECRET"      # MAC
+
+[files]
+# Какие файлы брать при обработке папки
+globs = ["*.log", "*.log.*", "*.txt", "*.out", "*.gz"]
